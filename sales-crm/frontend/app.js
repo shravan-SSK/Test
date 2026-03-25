@@ -380,26 +380,59 @@ async function renderStakeholders() {
   return stakeholders.map(s => {
     let liData = {};
     try { liData = JSON.parse(s.linkedin_data || '{}'); } catch {}
+    let signals = [];
+    try { signals = JSON.parse(s.buying_signals || '[]'); } catch {}
     const initials = (s.name || '?').split(' ').map(w => w[0]).join('').slice(0,2).toUpperCase();
+    const aiEnriched = !!s.ai_enriched_at;
+
     return `
       <div class="profile-card">
         <div class="pc-header">
           <div class="pc-avatar">${initials}</div>
           <div class="pc-info">
-            <h3>${s.name}</h3>
+            <h3>${s.name} ${aiEnriched ? '<span style="font-size:11px;color:var(--accent);font-weight:400">✦ AI enriched</span>' : ''}</h3>
             <p>${liData.headline || s.role || '—'} ${liData.current_company ? '@ ' + liData.current_company : ''}</p>
-            <p>${s.email || ''} ${liData.location ? '· ' + liData.location : ''}</p>
+            <p style="font-size:12px;color:var(--muted)">
+              ${s.email || ''}
+              ${liData.location ? '· ' + liData.location : ''}
+              ${s.account_id ? '· Account #' + s.account_id : ''}
+              ${s.lead_id ? '· Lead #' + s.lead_id : ''}
+            </p>
           </div>
         </div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
           ${badge(s.influence_level || 'unknown', s.influence_level === 'high' ? 'badge-red' : s.influence_level === 'medium' ? 'badge-yellow' : 'badge-gray')}
           ${badge(s.sentiment || 'neutral', s.sentiment === 'positive' ? 'badge-green' : s.sentiment === 'negative' ? 'badge-red' : 'badge-gray')}
           ${s.role ? badge(s.role, 'badge-blue') : ''}
         </div>
-        ${liData.summary ? `<p style="color:var(--muted);font-size:12.5px;margin-bottom:10px">${liData.summary}</p>` : ''}
-        ${liData.skills?.length ? `<div class="pc-skills">${liData.skills.map(sk => `<span class="skill-tag">${sk}</span>`).join('')}</div>` : ''}
-        <div style="display:flex;gap:6px;margin-top:12px">
-          ${s.linkedin_url ? `<button class="btn btn-sm btn-ghost" onclick="rescanLinkedIn('stakeholder',${s.id},'${s.linkedin_url}')">Re-scan LinkedIn</button>` : ''}
+
+        ${s.ai_summary ? `
+          <div style="background:var(--surface2);border-left:3px solid var(--accent);border-radius:4px;padding:10px 12px;margin-bottom:10px">
+            <div style="font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:var(--accent);margin-bottom:4px">✦ AI Summary</div>
+            <p style="font-size:12.5px;line-height:1.5">${s.ai_summary}</p>
+          </div>` : liData.summary ? `<p style="color:var(--muted);font-size:12.5px;margin-bottom:10px">${liData.summary}</p>` : ''}
+
+        ${s.approach_recommendation ? `
+          <div style="background:var(--surface2);border-left:3px solid var(--success);border-radius:4px;padding:10px 12px;margin-bottom:10px">
+            <div style="font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:var(--success);margin-bottom:4px">✦ How to Approach</div>
+            <p style="font-size:12.5px;line-height:1.5">${s.approach_recommendation}</p>
+          </div>` : ''}
+
+        ${signals.length ? `
+          <div style="margin-bottom:10px">
+            <div style="font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:var(--warning);margin-bottom:6px">✦ Buying Signals</div>
+            <div class="pc-skills">${signals.map(sig => `<span class="skill-tag" style="border-color:var(--warning);color:var(--warning)">${sig}</span>`).join('')}</div>
+          </div>` : ''}
+
+        ${liData.skills?.length ? `
+          <div style="margin-bottom:10px">
+            <div style="font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:6px">Skills</div>
+            <div class="pc-skills">${liData.skills.map(sk => `<span class="skill-tag">${sk}</span>`).join('')}</div>
+          </div>` : ''}
+
+        <div style="display:flex;gap:6px;margin-top:12px;flex-wrap:wrap">
+          ${s.linkedin_url ? `<button class="btn btn-sm btn-ghost" onclick="rescanLinkedIn('stakeholder',${s.id},'${s.linkedin_url}')">Re-scan + Re-analyse</button>` : ''}
           <button class="btn btn-sm btn-ghost" onclick="scanLinkedIn('stakeholder',${s.id})">Add LinkedIn</button>
           <button class="btn btn-sm btn-danger" onclick="deleteStakeholder(${s.id})">Del</button>
         </div>

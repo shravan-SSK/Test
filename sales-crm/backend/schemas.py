@@ -137,17 +137,27 @@ class StakeholderBase(BaseModel):
 
 class StakeholderCreate(StakeholderBase):
     contact_id: Optional[int] = None
+    account_id: Optional[int] = None
+    lead_id: Optional[int] = None
     project_ids: Optional[List[int]] = []
 
 class StakeholderUpdate(StakeholderBase):
     name: Optional[str] = None
     contact_id: Optional[int] = None
+    account_id: Optional[int] = None
+    lead_id: Optional[int] = None
     project_ids: Optional[List[int]] = None
 
 class StakeholderOut(StakeholderBase):
     id: int
     linkedin_data: Optional[str] = None
     contact_id: Optional[int] = None
+    account_id: Optional[int] = None
+    lead_id: Optional[int] = None
+    ai_summary: Optional[str] = None
+    approach_recommendation: Optional[str] = None
+    buying_signals: Optional[str] = None   # JSON list stored as text
+    ai_enriched_at: Optional[datetime] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
     class Config:

@@ -157,20 +157,30 @@ class Project(Base):
 class Stakeholder(Base):
     __tablename__ = "stakeholders"
 
-    id              = Column(Integer, primary_key=True, index=True)
-    name            = Column(String(255), nullable=False)
-    role            = Column(String(100))       # decision-maker / influencer / user / champion
-    email           = Column(String(255), index=True)
-    linkedin_url    = Column(String(500))
-    linkedin_data   = Column(Text)              # JSON scraped profile
-    influence_level = Column(String(50))        # high / medium / low
-    sentiment       = Column(String(50))        # positive / neutral / negative
-    notes           = Column(Text)
-    created_at      = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at      = Column(DateTime(timezone=True), onupdate=func.now())
+    id                      = Column(Integer, primary_key=True, index=True)
+    name                    = Column(String(255), nullable=False)
+    role                    = Column(String(100))       # decision-maker / influencer / user / champion
+    email                   = Column(String(255), index=True)
+    linkedin_url            = Column(String(500))
+    linkedin_data           = Column(Text)              # JSON scraped profile
+    influence_level         = Column(String(50))        # high / medium / low
+    sentiment               = Column(String(50))        # positive / neutral / negative
+    notes                   = Column(Text)
+    # AI-generated enrichment fields
+    ai_summary              = Column(Text)              # Claude-generated profile summary
+    approach_recommendation = Column(Text)              # Claude-generated outreach advice
+    buying_signals          = Column(Text)              # JSON list of detected buying signals
+    ai_enriched_at          = Column(DateTime(timezone=True))
+    created_at              = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at              = Column(DateTime(timezone=True), onupdate=func.now())
 
     contact_id      = Column(Integer, ForeignKey("contacts.id"), nullable=True)
+    account_id      = Column(Integer, ForeignKey("accounts.id"), nullable=True)
+    lead_id         = Column(Integer, ForeignKey("leads.id"), nullable=True)
+
     contact         = relationship("Contact", back_populates="stakeholder")
+    account         = relationship("Account")
+    lead            = relationship("Lead")
     projects        = relationship("Project", secondary=stakeholder_project_assoc, back_populates="stakeholders")
 
 
