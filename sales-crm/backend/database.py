@@ -3,7 +3,8 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 import os
 
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./sales_crm.db")
+# Use CRM_DB_URL to avoid collision with Replit's auto-set DATABASE_URL (PostgreSQL)
+DATABASE_URL = os.getenv("CRM_DB_URL", "sqlite:///./sales_crm.db")
 
 engine = create_engine(
     DATABASE_URL,
