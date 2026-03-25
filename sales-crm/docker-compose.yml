@@ -1,0 +1,19 @@
+services:
+  crm:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: sales-crm
+    ports:
+      - "8000:8000"
+    volumes:
+      # Persist the SQLite database across restarts
+      - crm-data:/app/backend/data
+    environment:
+      - DATABASE_URL=sqlite:///./data/sales_crm.db
+      # Optional: set your RapidAPI key here to enable real LinkedIn scraping
+      # - RAPIDAPI_KEY=your_key_here
+    restart: unless-stopped
+
+volumes:
+  crm-data:
