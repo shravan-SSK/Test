@@ -61,3 +61,11 @@ if os.path.isdir(FRONTEND_DIR):
 @app.get("/health", tags=["Health"])
 def health():
     return {"status": "ok"}
+
+
+# ── Entry point (used by Replit / direct python main.py) ───────────────────────
+
+if __name__ == "__main__":
+    import uvicorn
+    port = int(os.getenv("PORT", 8080))
+    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=False)
