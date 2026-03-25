@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sales CRM</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+
+<!-- ── Sidebar ─────────────────────────────────────────────────────────────── -->
+<aside class="sidebar">
+  <div class="logo">
+    <span class="logo-icon">◈</span>
+    <span>Sales CRM</span>
+  </div>
+  <nav>
+    <a class="nav-item active" data-page="dashboard">
+      <span class="nav-icon">▦</span> Dashboard
+    </a>
+    <a class="nav-item" data-page="leads">
+      <span class="nav-icon">◎</span> Leads
+    </a>
+    <a class="nav-item" data-page="contacts">
+      <span class="nav-icon">◉</span> Contacts
+    </a>
+    <a class="nav-item" data-page="accounts">
+      <span class="nav-icon">▣</span> Accounts
+    </a>
+    <a class="nav-item" data-page="projects">
+      <span class="nav-icon">◈</span> Projects
+    </a>
+    <a class="nav-item" data-page="stakeholders">
+      <span class="nav-icon">◐</span> Stakeholders
+    </a>
+    <a class="nav-item" data-page="pipeline">
+      <span class="nav-icon">▷</span> Pipeline
+    </a>
+    <a class="nav-item" data-page="emails">
+      <span class="nav-icon">✉</span> Emails
+    </a>
+  </nav>
+</aside>
+
+<!-- ── Main content ───────────────────────────────────────────────────────── -->
+<main class="main">
+  <header class="topbar">
+    <h1 id="page-title">Dashboard</h1>
+    <button id="btn-add" class="btn btn-primary">+ Add</button>
+  </header>
+
+  <div id="app-content"></div>
+</main>
+
+<!-- ── Modal ──────────────────────────────────────────────────────────────── -->
+<div id="modal-overlay" class="hidden">
+  <div class="modal">
+    <div class="modal-header">
+      <span id="modal-title">Form</span>
+      <button id="modal-close" class="modal-close">✕</button>
+    </div>
+    <div id="modal-body"></div>
+  </div>
+</div>
+
+<!-- ── Toast ──────────────────────────────────────────────────────────────── -->
+<div id="toast" class="toast hidden"></div>
+
+<script src="/static/app.js"></script>
+</body>
+</html>

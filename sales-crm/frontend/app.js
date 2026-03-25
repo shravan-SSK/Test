@@ -1,0 +1,672 @@
+/* ── Sales CRM – frontend SPA ─────────────────────────────────────────────── */
+
+const API = '/api/v1';
+
+// ── Utilities ─────────────────────────────────────────────────────────────────
+
+async function api(method, path, body) {
+  const opts = { method, headers: { 'Content-Type': 'application/json' } };
+  if (body) opts.body = JSON.stringify(body);
+  const res = await fetch(API + path, opts);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(err.detail || 'Request failed');
+  }
+  if (res.status === 204) return null;
+  return res.json();
+}
+
+function toast(msg, ok = true) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = `toast ${ok ? 'toast-ok' : 'toast-err'}`;
+  setTimeout(() => el.classList.add('hidden'), 3000);
+}
+
+function openModal(title, html, onSubmit) {
+  document.getElementById('modal-title').textContent = title;
+  document.getElementById('modal-body').innerHTML = html;
+  document.getElementById('modal-overlay').classList.remove('hidden');
+  if (onSubmit) {
+    document.getElementById('crm-form')?.addEventListener('submit', async e => {
+      e.preventDefault();
+      try {
+        await onSubmit(e);
+        closeModal();
+      } catch (err) { toast(err.message, false); }
+    });
+  }
+}
+
+function closeModal() {
+  document.getElementById('modal-overlay').classList.add('hidden');
+}
+
+function badge(text, colorClass = 'badge-gray') {
+  return `<span class="badge ${colorClass}">${text}</span>`;
+}
+
+const STAGE_COLORS = {
+  prospecting:        'badge-gray',
+  qualification:      'badge-blue',
+  needs_analysis:     'badge-blue',
+  value_proposition:  'badge-purple',
+  proposal:           'badge-yellow',
+  negotiation:        'badge-yellow',
+  closed_won:         'badge-green',
+  closed_lost:        'badge-red',
+};
+
+const LEAD_COLORS = {
+  new: 'badge-blue', contacted: 'badge-yellow',
+  qualified: 'badge-green', unqualified: 'badge-red', converted: 'badge-purple',
+};
+
+// ── Pages ─────────────────────────────────────────────────────────────────────
+
+async function renderDashboard() {
+  let leads = [], contacts = [], accounts = [], projects = [], pipeline = {};
+  try {
+    [leads, contacts, accounts, projects, pipeline] = await Promise.all([
+      api('GET', '/leads?limit=1000'),
+      api('GET', '/contacts?limit=1000'),
+      api('GET', '/accounts?limit=1000'),
+      api('GET', '/projects?limit=1000'),
+      api('GET', '/sales-cycle/pipeline'),
+    ]);
+  } catch { toast('Could not load dashboard', false); }
+
+  const wonValue = pipeline['closed_won']?.total_value || 0;
+  const openValue = Object.entries(pipeline)
+    .filter(([k]) => !['closed_won','closed_lost'].includes(k))
+    .reduce((s, [, v]) => s + (v.total_value || 0), 0);
+
+  return `
+    <div class="stats-grid">
+      <div class="stat-card accent">
+        <div class="stat-label">Leads</div>
+        <div class="stat-value">${leads.length}</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Contacts</div>
+        <div class="stat-value">${contacts.length}</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Accounts</div>
+        <div class="stat-value">${accounts.length}</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Projects</div>
+        <div class="stat-value">${projects.length}</div>
+      </div>
+      <div class="stat-card success">
+        <div class="stat-label">Won Pipeline ($)</div>
+        <div class="stat-value" style="font-size:22px">$${wonValue.toLocaleString()}</div>
+      </div>
+      <div class="stat-card warning">
+        <div class="stat-label">Open Pipeline ($)</div>
+        <div class="stat-value" style="font-size:22px">$${openValue.toLocaleString()}</div>
+      </div>
+    </div>
+
+    <h2 style="margin-bottom:14px;font-size:15px;color:var(--muted);text-transform:uppercase;letter-spacing:.07em">Recent Leads</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Name</th><th>Email</th><th>Company</th><th>Source</th><th>Status</th></tr></thead>
+        <tbody>
+          ${leads.slice(0,8).map(l => `
+            <tr>
+              <td>${l.first_name || ''} ${l.last_name || ''}</td>
+              <td>${l.email || '—'}</td>
+              <td>${l.company || '—'}</td>
+              <td>${l.source || '—'}</td>
+              <td>${badge(l.status, LEAD_COLORS[l.status] || 'badge-gray')}</td>
+            </tr>`).join('') || '<tr><td colspan="5" style="color:var(--muted);text-align:center">No leads yet</td></tr>'}
+        </tbody>
+      </table>
+    </div>`;
+}
+
+// ── Leads ─────────────────────────────────────────────────────────────────────
+
+async function renderLeads() {
+  const leads = await api('GET', '/leads?limit=500').catch(() => []);
+  return `
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Title</th><th>Name</th><th>Email</th><th>Company</th><th>Source</th><th>Status</th><th>Score</th><th></th></tr></thead>
+        <tbody>
+          ${leads.map(l => `
+            <tr>
+              <td>${l.title}</td>
+              <td>${l.first_name || ''} ${l.last_name || ''}</td>
+              <td>${l.email || '—'}</td>
+              <td>${l.company || '—'}</td>
+              <td>${l.source || '—'}</td>
+              <td>${badge(l.status, LEAD_COLORS[l.status])}</td>
+              <td>${l.score}</td>
+              <td style="display:flex;gap:4px">
+                <button class="btn btn-sm btn-ghost" onclick="convertLead(${l.id})">Convert</button>
+                <button class="btn btn-sm btn-danger" onclick="deleteLead(${l.id})">Del</button>
+              </td>
+            </tr>`).join('') || '<tr><td colspan="8" style="color:var(--muted);text-align:center">No leads</td></tr>'}
+        </tbody>
+      </table>
+    </div>`;
+}
+
+function addLeadForm() {
+  openModal('Add Lead', `
+    <form id="crm-form">
+      <div class="form-grid">
+        <div class="form-group"><label>Title *</label><input name="title" required /></div>
+        <div class="form-group"><label>Company</label><input name="company" /></div>
+        <div class="form-group"><label>First Name</label><input name="first_name" /></div>
+        <div class="form-group"><label>Last Name</label><input name="last_name" /></div>
+        <div class="form-group"><label>Email</label><input name="email" type="email" /></div>
+        <div class="form-group"><label>Phone</label><input name="phone" /></div>
+        <div class="form-group"><label>Source</label>
+          <select name="source"><option>email</option><option>linkedin</option><option>web</option><option>manual</option></select>
+        </div>
+        <div class="form-group"><label>Score (0-100)</label><input name="score" type="number" min="0" max="100" value="0" /></div>
+      </div>
+      <div class="form-group"><label>Notes</label><textarea name="notes" rows="2"></textarea></div>
+      <div class="form-actions">
+        <button type="button" class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+        <button type="submit" class="btn btn-primary">Save Lead</button>
+      </div>
+    </form>`, async (e) => {
+    const fd = new FormData(e.target);
+    const body = Object.fromEntries(fd.entries());
+    body.score = parseInt(body.score) || 0;
+    await api('POST', '/leads', body);
+    toast('Lead created'); navigate('leads');
+  });
+}
+
+async function convertLead(id) {
+  try {
+    const res = await api('POST', `/leads/${id}/convert`);
+    toast(`Converted → Contact #${res.contact_id}, Project #${res.project_id}`);
+    navigate('leads');
+  } catch (err) { toast(err.message, false); }
+}
+
+async function deleteLead(id) {
+  if (!confirm('Delete this lead?')) return;
+  await api('DELETE', `/leads/${id}`).catch(err => toast(err.message, false));
+  toast('Deleted'); navigate('leads');
+}
+
+// ── Contacts ──────────────────────────────────────────────────────────────────
+
+async function renderContacts() {
+  const contacts = await api('GET', '/contacts?limit=500').catch(() => []);
+  return `
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Name</th><th>Email</th><th>Phone</th><th>Job Title</th><th>LinkedIn</th><th></th></tr></thead>
+        <tbody>
+          ${contacts.map(c => `
+            <tr>
+              <td>${c.first_name} ${c.last_name || ''}</td>
+              <td>${c.email || '—'}</td>
+              <td>${c.phone || '—'}</td>
+              <td>${c.job_title || '—'}</td>
+              <td>${c.linkedin_url ? `<a href="${c.linkedin_url}" target="_blank" style="color:var(--accent)">Profile</a>` : '—'}</td>
+              <td style="display:flex;gap:4px">
+                <button class="btn btn-sm btn-ghost" onclick="scanLinkedIn('contact',${c.id})">Scan LI</button>
+                <button class="btn btn-sm btn-danger" onclick="deleteContact(${c.id})">Del</button>
+              </td>
+            </tr>`).join('') || '<tr><td colspan="6" style="color:var(--muted);text-align:center">No contacts</td></tr>'}
+        </tbody>
+      </table>
+    </div>`;
+}
+
+function addContactForm() {
+  openModal('Add Contact', `
+    <form id="crm-form">
+      <div class="form-grid">
+        <div class="form-group"><label>First Name *</label><input name="first_name" required /></div>
+        <div class="form-group"><label>Last Name</label><input name="last_name" /></div>
+        <div class="form-group"><label>Email</label><input name="email" type="email" /></div>
+        <div class="form-group"><label>Phone</label><input name="phone" /></div>
+        <div class="form-group"><label>Job Title</label><input name="job_title" /></div>
+        <div class="form-group"><label>Department</label><input name="department" /></div>
+      </div>
+      <div class="form-group"><label>LinkedIn URL</label><input name="linkedin_url" /></div>
+      <div class="form-actions">
+        <button type="button" class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+        <button type="submit" class="btn btn-primary">Save Contact</button>
+      </div>
+    </form>`, async (e) => {
+    const fd = new FormData(e.target);
+    await api('POST', '/contacts', Object.fromEntries(fd.entries()));
+    toast('Contact created'); navigate('contacts');
+  });
+}
+
+async function deleteContact(id) {
+  if (!confirm('Delete this contact?')) return;
+  await api('DELETE', `/contacts/${id}`).catch(err => toast(err.message, false));
+  toast('Deleted'); navigate('contacts');
+}
+
+// ── Accounts ──────────────────────────────────────────────────────────────────
+
+async function renderAccounts() {
+  const accounts = await api('GET', '/accounts?limit=500').catch(() => []);
+  return `
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Name</th><th>Domain</th><th>Industry</th><th>Website</th><th>Employees</th><th></th></tr></thead>
+        <tbody>
+          ${accounts.map(a => `
+            <tr>
+              <td>${a.name}</td>
+              <td>${a.domain || '—'}</td>
+              <td>${a.industry || '—'}</td>
+              <td>${a.website ? `<a href="${a.website}" target="_blank" style="color:var(--accent)">${a.website}</a>` : '—'}</td>
+              <td>${a.employees || '—'}</td>
+              <td>
+                <button class="btn btn-sm btn-danger" onclick="deleteAccount(${a.id})">Del</button>
+              </td>
+            </tr>`).join('') || '<tr><td colspan="6" style="color:var(--muted);text-align:center">No accounts</td></tr>'}
+        </tbody>
+      </table>
+    </div>`;
+}
+
+function addAccountForm() {
+  openModal('Add Account', `
+    <form id="crm-form">
+      <div class="form-grid">
+        <div class="form-group"><label>Name *</label><input name="name" required /></div>
+        <div class="form-group"><label>Domain</label><input name="domain" placeholder="acme.com" /></div>
+        <div class="form-group"><label>Industry</label><input name="industry" /></div>
+        <div class="form-group"><label>Website</label><input name="website" /></div>
+        <div class="form-group"><label>Revenue ($)</label><input name="revenue" type="number" /></div>
+        <div class="form-group"><label>Employees</label><input name="employees" type="number" /></div>
+      </div>
+      <div class="form-group"><label>Address</label><textarea name="address" rows="2"></textarea></div>
+      <div class="form-actions">
+        <button type="button" class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+        <button type="submit" class="btn btn-primary">Save Account</button>
+      </div>
+    </form>`, async (e) => {
+    const fd = new FormData(e.target);
+    const body = Object.fromEntries(fd.entries());
+    if (body.revenue) body.revenue = parseFloat(body.revenue);
+    if (body.employees) body.employees = parseInt(body.employees);
+    await api('POST', '/accounts', body);
+    toast('Account created'); navigate('accounts');
+  });
+}
+
+async function deleteAccount(id) {
+  if (!confirm('Delete this account?')) return;
+  await api('DELETE', `/accounts/${id}`).catch(err => toast(err.message, false));
+  toast('Deleted'); navigate('accounts');
+}
+
+// ── Projects ──────────────────────────────────────────────────────────────────
+
+async function renderProjects() {
+  const projects = await api('GET', '/projects?limit=500').catch(() => []);
+  return `
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Name</th><th>Status</th><th>Value</th><th>Close Date</th><th></th></tr></thead>
+        <tbody>
+          ${projects.map(p => `
+            <tr>
+              <td>${p.name}</td>
+              <td>${badge(p.status, p.status === 'active' ? 'badge-green' : p.status === 'closed' ? 'badge-red' : 'badge-blue')}</td>
+              <td>${p.value ? '$' + Number(p.value).toLocaleString() + ' ' + (p.currency||'USD') : '—'}</td>
+              <td>${p.close_date ? new Date(p.close_date).toLocaleDateString() : '—'}</td>
+              <td style="display:flex;gap:4px">
+                <button class="btn btn-sm btn-ghost" onclick="identifyStakeholders(${p.id})">Find Stakeholders</button>
+                <button class="btn btn-sm btn-danger" onclick="deleteProject(${p.id})">Del</button>
+              </td>
+            </tr>`).join('') || '<tr><td colspan="5" style="color:var(--muted);text-align:center">No projects</td></tr>'}
+        </tbody>
+      </table>
+    </div>`;
+}
+
+function addProjectForm() {
+  openModal('Add Project', `
+    <form id="crm-form">
+      <div class="form-grid">
+        <div class="form-group"><label>Name *</label><input name="name" required /></div>
+        <div class="form-group"><label>Value ($)</label><input name="value" type="number" /></div>
+        <div class="form-group"><label>Currency</label><input name="currency" value="USD" /></div>
+        <div class="form-group"><label>Close Date</label><input name="close_date" type="date" /></div>
+      </div>
+      <div class="form-group"><label>Description</label><textarea name="description" rows="2"></textarea></div>
+      <div class="form-actions">
+        <button type="button" class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+        <button type="submit" class="btn btn-primary">Save Project</button>
+      </div>
+    </form>`, async (e) => {
+    const fd = new FormData(e.target);
+    const body = Object.fromEntries(fd.entries());
+    if (body.value) body.value = parseFloat(body.value);
+    if (body.close_date) body.close_date = new Date(body.close_date).toISOString();
+    await api('POST', '/projects', body);
+    toast('Project created'); navigate('projects');
+  });
+}
+
+async function identifyStakeholders(projectId) {
+  try {
+    const res = await api('POST', `/stakeholders/identify-from-project/${projectId}`);
+    toast(`Identified ${res.length} stakeholder(s)`);
+    navigate('stakeholders');
+  } catch (err) { toast(err.message, false); }
+}
+
+async function deleteProject(id) {
+  if (!confirm('Delete this project?')) return;
+  await api('DELETE', `/projects/${id}`).catch(err => toast(err.message, false));
+  toast('Deleted'); navigate('projects');
+}
+
+// ── Stakeholders ──────────────────────────────────────────────────────────────
+
+async function renderStakeholders() {
+  const stakeholders = await api('GET', '/stakeholders?limit=500').catch(() => []);
+  return stakeholders.map(s => {
+    let liData = {};
+    try { liData = JSON.parse(s.linkedin_data || '{}'); } catch {}
+    const initials = (s.name || '?').split(' ').map(w => w[0]).join('').slice(0,2).toUpperCase();
+    return `
+      <div class="profile-card">
+        <div class="pc-header">
+          <div class="pc-avatar">${initials}</div>
+          <div class="pc-info">
+            <h3>${s.name}</h3>
+            <p>${liData.headline || s.role || '—'} ${liData.current_company ? '@ ' + liData.current_company : ''}</p>
+            <p>${s.email || ''} ${liData.location ? '· ' + liData.location : ''}</p>
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+          ${badge(s.influence_level || 'unknown', s.influence_level === 'high' ? 'badge-red' : s.influence_level === 'medium' ? 'badge-yellow' : 'badge-gray')}
+          ${badge(s.sentiment || 'neutral', s.sentiment === 'positive' ? 'badge-green' : s.sentiment === 'negative' ? 'badge-red' : 'badge-gray')}
+          ${s.role ? badge(s.role, 'badge-blue') : ''}
+        </div>
+        ${liData.summary ? `<p style="color:var(--muted);font-size:12.5px;margin-bottom:10px">${liData.summary}</p>` : ''}
+        ${liData.skills?.length ? `<div class="pc-skills">${liData.skills.map(sk => `<span class="skill-tag">${sk}</span>`).join('')}</div>` : ''}
+        <div style="display:flex;gap:6px;margin-top:12px">
+          ${s.linkedin_url ? `<button class="btn btn-sm btn-ghost" onclick="rescanLinkedIn('stakeholder',${s.id},'${s.linkedin_url}')">Re-scan LinkedIn</button>` : ''}
+          <button class="btn btn-sm btn-ghost" onclick="scanLinkedIn('stakeholder',${s.id})">Add LinkedIn</button>
+          <button class="btn btn-sm btn-danger" onclick="deleteStakeholder(${s.id})">Del</button>
+        </div>
+      </div>`;
+  }).join('') || '<p style="color:var(--muted)">No stakeholders yet. Open a project and click "Find Stakeholders".</p>';
+}
+
+function addStakeholderForm() {
+  openModal('Add Stakeholder', `
+    <form id="crm-form">
+      <div class="form-grid">
+        <div class="form-group"><label>Name *</label><input name="name" required /></div>
+        <div class="form-group"><label>Email</label><input name="email" type="email" /></div>
+        <div class="form-group"><label>Role</label>
+          <select name="role"><option>decision-maker</option><option>influencer</option><option>user</option><option>champion</option><option>unknown</option></select>
+        </div>
+        <div class="form-group"><label>Influence</label>
+          <select name="influence_level"><option>high</option><option value="medium" selected>medium</option><option>low</option></select>
+        </div>
+        <div class="form-group"><label>Sentiment</label>
+          <select name="sentiment"><option>positive</option><option value="neutral" selected>neutral</option><option>negative</option></select>
+        </div>
+      </div>
+      <div class="form-group"><label>LinkedIn URL</label><input name="linkedin_url" /></div>
+      <div class="form-actions">
+        <button type="button" class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+        <button type="submit" class="btn btn-primary">Save</button>
+      </div>
+    </form>`, async (e) => {
+    const fd = new FormData(e.target);
+    await api('POST', '/stakeholders', Object.fromEntries(fd.entries()));
+    toast('Stakeholder created'); navigate('stakeholders');
+  });
+}
+
+async function scanLinkedIn(entityType, entityId, prefillUrl = '') {
+  openModal('Scan LinkedIn Profile', `
+    <form id="crm-form">
+      <div class="form-group">
+        <label>LinkedIn Profile URL</label>
+        <input name="linkedin_url" value="${prefillUrl}" placeholder="https://www.linkedin.com/in/..." required />
+      </div>
+      <div class="form-actions">
+        <button type="button" class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+        <button type="submit" class="btn btn-primary">Scan</button>
+      </div>
+    </form>`, async (e) => {
+    const fd = new FormData(e.target);
+    const body = { linkedin_url: fd.get('linkedin_url'), entity_type: entityType, entity_id: entityId };
+    await api('POST', '/stakeholders/scan-linkedin', body);
+    toast('Profile scanned!'); navigate('stakeholders');
+  });
+}
+
+async function rescanLinkedIn(entityType, entityId, url) {
+  try {
+    await api('POST', '/stakeholders/scan-linkedin', { linkedin_url: url, entity_type: entityType, entity_id: entityId });
+    toast('Profile refreshed!'); navigate('stakeholders');
+  } catch (err) { toast(err.message, false); }
+}
+
+async function deleteStakeholder(id) {
+  if (!confirm('Delete this stakeholder?')) return;
+  await api('DELETE', `/stakeholders/${id}`).catch(err => toast(err.message, false));
+  toast('Deleted'); navigate('stakeholders');
+}
+
+// ── Pipeline ──────────────────────────────────────────────────────────────────
+
+async function renderPipeline() {
+  const [pipeline, cycles, projects] = await Promise.all([
+    api('GET', '/sales-cycle/pipeline').catch(() => ({})),
+    api('GET', '/sales-cycle?limit=500').catch(() => []),
+    api('GET', '/projects?limit=500').catch(() => []),
+  ]);
+
+  const projectMap = Object.fromEntries(projects.map(p => [p.id, p]));
+
+  const stages = [
+    'prospecting','qualification','needs_analysis',
+    'value_proposition','proposal','negotiation','closed_won','closed_lost',
+  ];
+
+  const cols = stages.map(stage => {
+    const info = pipeline[stage] || {};
+    const stageCycles = cycles.filter(c => c.stage === stage);
+    const cards = stageCycles.map(c => {
+      const proj = projectMap[c.project_id] || {};
+      return `
+        <div class="pipeline-card" onclick="openCycleDetail(${c.id})">
+          <div class="pc-name">${proj.name || `Project #${c.project_id}`}</div>
+          <div class="pc-value">${proj.value ? '$' + Number(proj.value).toLocaleString() : '—'}</div>
+          <div class="pc-prob">${c.probability}% probability</div>
+        </div>`;
+    }).join('');
+
+    const label = stage.replace(/_/g,' ').replace(/\b\w/g,l=>l.toUpperCase());
+    return `
+      <div class="pipeline-col">
+        <h3>${label} <span class="col-count">${info.count || 0}</span></h3>
+        ${cards || '<p style="color:var(--muted);font-size:12px">Empty</p>'}
+      </div>`;
+  });
+
+  return `<div class="pipeline">${cols.join('')}</div>`;
+}
+
+async function openCycleDetail(cycleId) {
+  const [cycle, activities] = await Promise.all([
+    api('GET', `/sales-cycle/${cycleId}`),
+    api('GET', `/sales-cycle/${cycleId}/activities`),
+  ]);
+
+  const stages = ['prospecting','qualification','needs_analysis','value_proposition','proposal','negotiation','closed_won','closed_lost'];
+  const stageOptions = stages.map(s =>
+    `<option value="${s}" ${s === cycle.stage ? 'selected' : ''}>${s.replace(/_/g,' ')}</option>`).join('');
+
+  openModal(`Deal #${cycle.project_id} – Sales Cycle`, `
+    <div style="margin-bottom:16px">
+      ${badge(cycle.stage, STAGE_COLORS[cycle.stage])}
+      <span style="margin-left:10px;color:var(--muted)">${cycle.probability}% probability</span>
+    </div>
+    <div style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:12px;margin-bottom:16px">
+      <div style="color:var(--muted);font-size:11px;text-transform:uppercase;margin-bottom:4px">Next Action</div>
+      <div>${cycle.next_action || '—'}</div>
+    </div>
+    <form id="crm-form">
+      <div class="form-group">
+        <label>Advance to Stage</label>
+        <select name="new_stage">${stageOptions}</select>
+      </div>
+      <div class="form-group"><label>Notes</label><textarea name="notes" rows="2"></textarea></div>
+      <div class="form-actions">
+        <button type="button" class="btn btn-ghost" onclick="closeModal()">Close</button>
+        <button type="submit" class="btn btn-primary">Advance Stage</button>
+      </div>
+    </form>
+    <h4 style="margin:16px 0 8px;color:var(--muted);font-size:11px;text-transform:uppercase">Activity Log</h4>
+    ${activities.map(a => `
+      <div style="border-left:2px solid var(--border);padding:6px 12px;margin-bottom:8px">
+        <div style="font-weight:600;font-size:13px">${a.title}</div>
+        <div style="color:var(--muted);font-size:12px">${a.description || ''}</div>
+        <div style="color:var(--muted);font-size:11px">${new Date(a.created_at).toLocaleString()}</div>
+      </div>`).join('') || '<p style="color:var(--muted);font-size:12px">No activity yet</p>'}
+  `, async (e) => {
+    const fd = new FormData(e.target);
+    const res = await api('POST', `/sales-cycle/${cycleId}/advance`, {
+      new_stage: fd.get('new_stage'),
+      notes: fd.get('notes'),
+    });
+    toast(res.message);
+    navigate('pipeline');
+  });
+}
+
+// ── Emails ────────────────────────────────────────────────────────────────────
+
+async function renderEmails() {
+  const threads = await api('GET', '/emails?limit=200').catch(() => []);
+  return `
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Subject</th><th>From</th><th>To</th><th>Received</th><th>Contact</th><th>Project</th></tr></thead>
+        <tbody>
+          ${threads.map(t => `
+            <tr>
+              <td>${t.subject || '(no subject)'}</td>
+              <td>${t.from_email}</td>
+              <td>${t.to_emails || '—'}</td>
+              <td>${t.received_at ? new Date(t.received_at).toLocaleDateString() : '—'}</td>
+              <td>${t.contact_id ? `#${t.contact_id}` : badge('unmatched','badge-yellow')}</td>
+              <td>${t.project_id ? `#${t.project_id}` : '—'}</td>
+            </tr>`).join('') || '<tr><td colspan="6" style="color:var(--muted);text-align:center">No emails ingested</td></tr>'}
+        </tbody>
+      </table>
+    </div>`;
+}
+
+function addEmailForm() {
+  openModal('Ingest Email Thread', `
+    <form id="crm-form">
+      <div class="form-group"><label>From Email *</label><input name="from_email" type="email" required /></div>
+      <div class="form-group"><label>To (comma-separated)</label><input name="to_emails" /></div>
+      <div class="form-group"><label>CC</label><input name="cc_emails" /></div>
+      <div class="form-group"><label>Subject</label><input name="subject" /></div>
+      <div class="form-group"><label>Body</label><textarea name="body" rows="4"></textarea></div>
+      <div class="form-actions">
+        <button type="button" class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+        <button type="submit" class="btn btn-primary">Ingest & Map</button>
+      </div>
+    </form>`, async (e) => {
+    const fd = new FormData(e.target);
+    const body = Object.fromEntries(fd.entries());
+    await api('POST', '/emails/ingest', body);
+    toast('Email ingested & mapped'); navigate('emails');
+  });
+}
+
+// ── Router ────────────────────────────────────────────────────────────────────
+
+const ADD_HANDLERS = {
+  dashboard:    null,
+  leads:        addLeadForm,
+  contacts:     addContactForm,
+  accounts:     addAccountForm,
+  projects:     addProjectForm,
+  stakeholders: addStakeholderForm,
+  pipeline:     null,
+  emails:       addEmailForm,
+};
+
+const PAGE_TITLES = {
+  dashboard: 'Dashboard', leads: 'Leads', contacts: 'Contacts',
+  accounts: 'Accounts', projects: 'Projects', stakeholders: 'Stakeholders',
+  pipeline: 'Pipeline', emails: 'Emails',
+};
+
+let currentPage = 'dashboard';
+
+async function navigate(page) {
+  currentPage = page;
+
+  document.querySelectorAll('.nav-item').forEach(el =>
+    el.classList.toggle('active', el.dataset.page === page));
+
+  document.getElementById('page-title').textContent = PAGE_TITLES[page] || page;
+
+  const addBtn = document.getElementById('btn-add');
+  addBtn.style.display = ADD_HANDLERS[page] ? 'inline-block' : 'none';
+
+  const content = document.getElementById('app-content');
+  content.innerHTML = '<p style="color:var(--muted)">Loading…</p>';
+
+  try {
+    const renderers = {
+      dashboard:    renderDashboard,
+      leads:        renderLeads,
+      contacts:     renderContacts,
+      accounts:     renderAccounts,
+      projects:     renderProjects,
+      stakeholders: renderStakeholders,
+      pipeline:     renderPipeline,
+      emails:       renderEmails,
+    };
+    content.innerHTML = await (renderers[page] || renderDashboard)();
+  } catch (err) {
+    content.innerHTML = `<p style="color:var(--danger)">Error: ${err.message}</p>`;
+  }
+}
+
+// ── Boot ──────────────────────────────────────────────────────────────────────
+
+document.addEventListener('DOMContentLoaded', () => {
+  // Nav clicks
+  document.querySelectorAll('.nav-item').forEach(el =>
+    el.addEventListener('click', () => navigate(el.dataset.page)));
+
+  // Add button
+  document.getElementById('btn-add').addEventListener('click', () => {
+    ADD_HANDLERS[currentPage]?.();
+  });
+
+  // Modal close
+  document.getElementById('modal-close').addEventListener('click', closeModal);
+  document.getElementById('modal-overlay').addEventListener('click', e => {
+    if (e.target === document.getElementById('modal-overlay')) closeModal();
+  });
+
+  navigate('dashboard');
+});
