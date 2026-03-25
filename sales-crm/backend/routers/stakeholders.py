@@ -5,8 +5,8 @@ from sqlalchemy.orm import Session
 from typing import List
 
 from database import get_db
-from models import Stakeholder, Project, Contact
-from schemas import StakeholderCreate, StakeholderUpdate, StakeholderOut, LinkedInScrapeRequest
+from models import Stakeholder, Project, Contact, Account, Lead
+from schemas import StakeholderCreate, StakeholderUpdate, StakeholderOut, LinkedInScrapeRequest, ProjectOut, AccountOut, LeadOut, ContactOut
 
 router = APIRouter(prefix="/stakeholders", tags=["Stakeholders"])
 
@@ -236,3 +236,105 @@ def identify_stakeholders(project_id: int, db: Session = Depends(get_db)):
 
     db.commit()
     return created
+
+
+# ── Relationship: list related entities ────────────────────────────────────────
+
+@router.get("/{stakeholder_id}/projects", response_model=List[ProjectOut])
+def get_stakeholder_projects(stakeholder_id: int, db: Session = Depends(get_db)):
+    s = db.query(Stakeholder).filter(Stakeholder.id == stakeholder_id).first()
+    if not s:
+        raise HTTPException(404, "Stakeholder not found")
+    return s.projects
+
+
+@router.get("/{stakeholder_id}/account", response_model=AccountOut)
+def get_stakeholder_account(stakeholder_id: int, db: Session = Depends(get_db)):
+    s = db.query(Stakeholder).filter(Stakeholder.id == stakeholder_id).first()
+    if not s:
+        raise HTTPException(404, "Stakeholder not found")
+    if not s.account:
+        raise HTTPException(404, "No account linked to this stakeholder")
+    return s.account
+
+
+@router.get("/{stakeholder_id}/lead", response_model=LeadOut)
+def get_stakeholder_lead(stakeholder_id: int, db: Session = Depends(get_db)):
+    s = db.query(Stakeholder).filter(Stakeholder.id == stakeholder_id).first()
+    if not s:
+        raise HTTPException(404, "Stakeholder not found")
+    if not s.lead:
+        raise HTTPException(404, "No lead linked to this stakeholder")
+    return s.lead
+
+
+@router.get("/{stakeholder_id}/contact", response_model=ContactOut)
+def get_stakeholder_contact(stakeholder_id: int, db: Session = Depends(get_db)):
+    s = db.query(Stakeholder).filter(Stakeholder.id == stakeholder_id).first()
+    if not s:
+        raise HTTPException(404, "Stakeholder not found")
+    if not s.contact:
+        raise HTTPException(404, "No contact linked to this stakeholder")
+    return s.contact
+
+
+# ── Relationship: link / unlink ───────────────────────────────────────────────
+
+@router.post("/{stakeholder_id}/link/project/{project_id}", status_code=200)
+def link_project(stakeholder_id: int, project_id: int, db: Session = Depends(get_db)):
+    s = db.query(Stakeholder).filter(Stakeholder.id == stakeholder_id).first()
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not s or not project:
+        raise HTTPException(404, "Stakeholder or Project not found")
+    if project not in s.projects:
+        s.projects.append(project)
+    db.commit()
+    return {"linked": True}
+
+
+@router.delete("/{stakeholder_id}/unlink/project/{project_id}", status_code=200)
+def unlink_project(stakeholder_id: int, project_id: int, db: Session = Depends(get_db)):
+    s = db.query(Stakeholder).filter(Stakeholder.id == stakeholder_id).first()
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not s or not project:
+        raise HTTPException(404, "Stakeholder or Project not found")
+    if project in s.projects:
+        s.projects.remove(project)
+    db.commit()
+    return {"unlinked": True}
+
+
+@router.patch("/{stakeholder_id}/link/account/{account_id}", response_model=StakeholderOut)
+def link_account(stakeholder_id: int, account_id: int, db: Session = Depends(get_db)):
+    s = db.query(Stakeholder).filter(Stakeholder.id == stakeholder_id).first()
+    account = db.query(Account).filter(Account.id == account_id).first()
+    if not s or not account:
+        raise HTTPException(404, "Stakeholder or Account not found")
+    s.account_id = account_id
+    db.commit()
+    db.refresh(s)
+    return s
+
+
+@router.patch("/{stakeholder_id}/link/lead/{lead_id}", response_model=StakeholderOut)
+def link_lead(stakeholder_id: int, lead_id: int, db: Session = Depends(get_db)):
+    s = db.query(Stakeholder).filter(Stakeholder.id == stakeholder_id).first()
+    lead = db.query(Lead).filter(Lead.id == lead_id).first()
+    if not s or not lead:
+        raise HTTPException(404, "Stakeholder or Lead not found")
+    s.lead_id = lead_id
+    db.commit()
+    db.refresh(s)
+    return s
+
+
+@router.patch("/{stakeholder_id}/link/contact/{contact_id}", response_model=StakeholderOut)
+def link_contact(stakeholder_id: int, contact_id: int, db: Session = Depends(get_db)):
+    s = db.query(Stakeholder).filter(Stakeholder.id == stakeholder_id).first()
+    contact = db.query(Contact).filter(Contact.id == contact_id).first()
+    if not s or not contact:
+        raise HTTPException(404, "Stakeholder or Contact not found")
+    s.contact_id = contact_id
+    db.commit()
+    db.refresh(s)
+    return s

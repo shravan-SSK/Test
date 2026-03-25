@@ -77,9 +77,10 @@ class Account(Base):
     created_at  = Column(DateTime(timezone=True), server_default=func.now())
     updated_at  = Column(DateTime(timezone=True), onupdate=func.now())
 
-    contacts    = relationship("Contact", secondary=contact_account_assoc, back_populates="accounts")
-    projects    = relationship("Project", back_populates="account")
-    leads       = relationship("Lead", back_populates="account")
+    contacts     = relationship("Contact", secondary=contact_account_assoc, back_populates="accounts")
+    projects     = relationship("Project", back_populates="account")
+    leads        = relationship("Lead", back_populates="account")
+    stakeholders = relationship("Stakeholder", back_populates="account")
 
 
 class Contact(Base):
@@ -125,9 +126,10 @@ class Lead(Base):
     contact_id  = Column(Integer, ForeignKey("contacts.id"), nullable=True)
     account_id  = Column(Integer, ForeignKey("accounts.id"), nullable=True)
 
-    contact     = relationship("Contact", back_populates="leads")
-    account     = relationship("Account", back_populates="leads")
-    project     = relationship("Project", back_populates="lead", uselist=False)
+    contact      = relationship("Contact", back_populates="leads")
+    account      = relationship("Account", back_populates="leads")
+    project      = relationship("Project", back_populates="lead", uselist=False)
+    stakeholders = relationship("Stakeholder", back_populates="lead")
 
 
 class Project(Base):
@@ -179,8 +181,8 @@ class Stakeholder(Base):
     lead_id         = Column(Integer, ForeignKey("leads.id"), nullable=True)
 
     contact         = relationship("Contact", back_populates="stakeholder")
-    account         = relationship("Account")
-    lead            = relationship("Lead")
+    account         = relationship("Account", back_populates="stakeholders")
+    lead            = relationship("Lead", back_populates="stakeholders")
     projects        = relationship("Project", secondary=stakeholder_project_assoc, back_populates="stakeholders")
 
 

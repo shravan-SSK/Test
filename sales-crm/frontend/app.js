@@ -146,6 +146,7 @@ async function renderLeads() {
               <td>${badge(l.status, LEAD_COLORS[l.status])}</td>
               <td>${l.score}</td>
               <td style="display:flex;gap:4px">
+                <button class="btn btn-sm btn-ghost" onclick="openLeadDetail(${l.id})">View</button>
                 <button class="btn btn-sm btn-ghost" onclick="convertLead(${l.id})">Convert</button>
                 <button class="btn btn-sm btn-danger" onclick="deleteLead(${l.id})">Del</button>
               </td>
@@ -215,6 +216,7 @@ async function renderContacts() {
               <td>${c.job_title || '—'}</td>
               <td>${c.linkedin_url ? `<a href="${c.linkedin_url}" target="_blank" style="color:var(--accent)">Profile</a>` : '—'}</td>
               <td style="display:flex;gap:4px">
+                <button class="btn btn-sm btn-ghost" onclick="openContactDetail(${c.id})">View</button>
                 <button class="btn btn-sm btn-ghost" onclick="scanLinkedIn('contact',${c.id})">Scan LI</button>
                 <button class="btn btn-sm btn-danger" onclick="deleteContact(${c.id})">Del</button>
               </td>
@@ -269,7 +271,8 @@ async function renderAccounts() {
               <td>${a.industry || '—'}</td>
               <td>${a.website ? `<a href="${a.website}" target="_blank" style="color:var(--accent)">${a.website}</a>` : '—'}</td>
               <td>${a.employees || '—'}</td>
-              <td>
+              <td style="display:flex;gap:4px">
+                <button class="btn btn-sm btn-ghost" onclick="openAccountDetail(${a.id})">View</button>
                 <button class="btn btn-sm btn-danger" onclick="deleteAccount(${a.id})">Del</button>
               </td>
             </tr>`).join('') || '<tr><td colspan="6" style="color:var(--muted);text-align:center">No accounts</td></tr>'}
@@ -326,6 +329,7 @@ async function renderProjects() {
               <td>${p.value ? '$' + Number(p.value).toLocaleString() + ' ' + (p.currency||'USD') : '—'}</td>
               <td>${p.close_date ? new Date(p.close_date).toLocaleDateString() : '—'}</td>
               <td style="display:flex;gap:4px">
+                <button class="btn btn-sm btn-ghost" onclick="openProjectDetail(${p.id})">View</button>
                 <button class="btn btn-sm btn-ghost" onclick="identifyStakeholders(${p.id})">Find Stakeholders</button>
                 <button class="btn btn-sm btn-danger" onclick="deleteProject(${p.id})">Del</button>
               </td>
@@ -432,6 +436,7 @@ async function renderStakeholders() {
           </div>` : ''}
 
         <div style="display:flex;gap:6px;margin-top:12px;flex-wrap:wrap">
+          <button class="btn btn-sm btn-ghost" onclick="openStakeholderDetail(${s.id})">View Details</button>
           ${s.linkedin_url ? `<button class="btn btn-sm btn-ghost" onclick="rescanLinkedIn('stakeholder',${s.id},'${s.linkedin_url}')">Re-scan + Re-analyse</button>` : ''}
           <button class="btn btn-sm btn-ghost" onclick="scanLinkedIn('stakeholder',${s.id})">Add LinkedIn</button>
           <button class="btn btn-sm btn-danger" onclick="deleteStakeholder(${s.id})">Del</button>
@@ -628,6 +633,314 @@ function addEmailForm() {
     const body = Object.fromEntries(fd.entries());
     await api('POST', '/emails/ingest', body);
     toast('Email ingested & mapped'); navigate('emails');
+  });
+}
+
+// ── Detail Modals ─────────────────────────────────────────────────────────────
+
+function sectionHdr(title) {
+  return `<div style="font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin:14px 0 5px;font-weight:600">${title}</div>`;
+}
+
+function relRow(label, sub, actions = '') {
+  return `<div style="display:flex;align-items:center;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--border)">
+    <div><div style="font-weight:500;font-size:13px">${label}</div>${sub ? `<div style="color:var(--muted);font-size:11px">${sub}</div>` : ''}</div>
+    <div style="display:flex;gap:4px">${actions}</div>
+  </div>`;
+}
+
+function relList(rows, empty = 'None') {
+  return rows.length ? rows.join('') : `<p style="color:var(--muted);font-size:12px;padding:4px 0">${empty}</p>`;
+}
+
+// ── Account detail ────────────────────────────────────────────────────────────
+
+async function openAccountDetail(id) {
+  const [acct, contacts, leads, projects, stakeholders] = await Promise.all([
+    api('GET', `/accounts/${id}`),
+    api('GET', `/accounts/${id}/contacts`).catch(() => []),
+    api('GET', `/accounts/${id}/leads`).catch(() => []),
+    api('GET', `/accounts/${id}/projects`).catch(() => []),
+    api('GET', `/accounts/${id}/stakeholders`).catch(() => []),
+  ]);
+  openModal(acct.name, `
+    <div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+        ${acct.industry ? badge(acct.industry,'badge-blue') : ''}
+        ${acct.employees ? `<span style="font-size:12px;color:var(--muted)">${acct.employees} employees</span>` : ''}
+        ${acct.revenue ? `<span style="font-size:12px;color:var(--muted)">$${Number(acct.revenue).toLocaleString()} rev</span>` : ''}
+      </div>
+      ${acct.domain ? `<p style="font-size:12px;color:var(--muted);margin-bottom:8px">${acct.domain}${acct.website ? ' · <a href="'+acct.website+'" target="_blank" style="color:var(--accent)">website</a>' : ''}</p>` : ''}
+      ${sectionHdr('Contacts ('+contacts.length+')')}
+      ${relList(contacts.map(c => relRow(
+        `${c.first_name} ${c.last_name||''}`, c.email||'',
+        `<button class="btn btn-sm btn-danger" onclick="unlinkThen('accounts',${id},'contact',${c.id},openAccountDetail)">Unlink</button>`)))}
+      <button class="btn btn-sm btn-ghost" style="margin-top:6px" onclick="linkEntityModal('accounts',${id},'contact','contacts',openAccountDetail)">+ Link Contact</button>
+      ${sectionHdr('Leads ('+leads.length+')')}
+      ${relList(leads.map(l => relRow(l.title, (l.email||l.company||'')+'  '+badge(l.status,LEAD_COLORS[l.status]||'badge-gray'), `<button class="btn btn-sm btn-ghost" onclick="openLeadDetail(${l.id})">View</button>`)))}
+      ${sectionHdr('Projects ('+projects.length+')')}
+      ${relList(projects.map(p => relRow(p.name, badge(p.status,'badge-gray'), `<button class="btn btn-sm btn-ghost" onclick="openProjectDetail(${p.id})">View</button>`)))}
+      ${sectionHdr('Stakeholders ('+stakeholders.length+')')}
+      ${relList(stakeholders.map(s => relRow(s.name, s.role||s.email||'', `<button class="btn btn-sm btn-ghost" onclick="openStakeholderDetail(${s.id})">View</button>`)))}
+      <div style="margin-top:16px;text-align:right"><button class="btn btn-ghost" onclick="closeModal()">Close</button></div>
+    </div>`);
+}
+
+async function unlinkThen(resource, id, entityType, entityId, reopenFn) {
+  try {
+    await api('DELETE', `/${resource}/${id}/unlink/${entityType}/${entityId}`);
+    toast('Unlinked'); reopenFn(id);
+  } catch(e) { toast(e.message, false); }
+}
+
+async function linkEntityModal(resource, id, entityType, listResource, reopenFn) {
+  const items = await api('GET', `/${listResource}?limit=500`).catch(() => []);
+  const opts = items.map(e => {
+    const lbl = e.first_name ? `${e.first_name} ${e.last_name||''} (${e.email||'#'+e.id})` : (e.title || e.name || '#'+e.id);
+    return `<option value="${e.id}">${lbl}</option>`;
+  }).join('');
+  openModal(`Link ${entityType}`, `
+    <form id="crm-form">
+      <div class="form-group"><label>Select ${entityType}</label>
+        <select name="eid">${opts||'<option disabled>No items found</option>'}</select>
+      </div>
+      <div class="form-actions">
+        <button type="button" class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+        <button type="submit" class="btn btn-primary">Link</button>
+      </div>
+    </form>`, async (e) => {
+    const eid = new FormData(e.target).get('eid');
+    await api('POST', `/${resource}/${id}/link/${entityType}/${eid}`);
+    toast('Linked'); reopenFn(id);
+  });
+}
+
+// ── Contact detail ────────────────────────────────────────────────────────────
+
+async function openContactDetail(id) {
+  const [c, accounts, projects, leads] = await Promise.all([
+    api('GET', `/contacts/${id}`),
+    api('GET', `/contacts/${id}/accounts`).catch(() => []),
+    api('GET', `/contacts/${id}/projects`).catch(() => []),
+    api('GET', `/contacts/${id}/leads`).catch(() => []),
+  ]);
+  const stakeholder = await api('GET', `/contacts/${id}/stakeholder`).catch(() => null);
+  openModal(`${c.first_name} ${c.last_name||''}`, `
+    <div>
+      <p style="font-size:12px;color:var(--muted);margin-bottom:10px">${c.email||''} ${c.phone ? '· '+c.phone : ''} ${c.job_title ? '· '+c.job_title : ''}</p>
+      ${sectionHdr('Accounts ('+accounts.length+')')}
+      ${relList(accounts.map(a => relRow(a.name, a.domain||'',
+        `<button class="btn btn-sm btn-ghost" onclick="openAccountDetail(${a.id})">View</button>
+         <button class="btn btn-sm btn-danger" onclick="unlinkThen('contacts',${id},'account',${a.id},openContactDetail)">Unlink</button>`)))}
+      <button class="btn btn-sm btn-ghost" style="margin-top:6px" onclick="linkEntityModal('contacts',${id},'account','accounts',openContactDetail)">+ Link Account</button>
+      ${sectionHdr('Projects ('+projects.length+')')}
+      ${relList(projects.map(p => relRow(p.name, badge(p.status,'badge-gray'),
+        `<button class="btn btn-sm btn-ghost" onclick="openProjectDetail(${p.id})">View</button>
+         <button class="btn btn-sm btn-danger" onclick="unlinkThen('contacts',${id},'project',${p.id},openContactDetail)">Unlink</button>`)))}
+      <button class="btn btn-sm btn-ghost" style="margin-top:6px" onclick="linkEntityModal('contacts',${id},'project','projects',openContactDetail)">+ Link Project</button>
+      ${sectionHdr('Leads ('+leads.length+')')}
+      ${relList(leads.map(l => relRow(l.title, badge(l.status,LEAD_COLORS[l.status]||'badge-gray'),
+        `<button class="btn btn-sm btn-ghost" onclick="openLeadDetail(${l.id})">View</button>`)))}
+      ${sectionHdr('Stakeholder Profile')}
+      ${stakeholder ? relRow(stakeholder.name, (stakeholder.role||'')+(stakeholder.influence_level?' · '+stakeholder.influence_level:''),
+        `<button class="btn btn-sm btn-ghost" onclick="openStakeholderDetail(${stakeholder.id})">View</button>`) : '<p style="color:var(--muted);font-size:12px">No stakeholder profile yet. Use "Scan LI" to create one.</p>'}
+      <div style="margin-top:16px;text-align:right"><button class="btn btn-ghost" onclick="closeModal()">Close</button></div>
+    </div>`);
+}
+
+// ── Lead detail ────────────────────────────────────────────────────────────────
+
+async function openLeadDetail(id) {
+  const lead = await api('GET', `/leads/${id}`);
+  const contact = await api('GET', `/leads/${id}/contact`).catch(() => null);
+  const account = await api('GET', `/leads/${id}/account`).catch(() => null);
+  const project = await api('GET', `/leads/${id}/project`).catch(() => null);
+  const stakeholders = await api('GET', `/leads/${id}/stakeholders`).catch(() => []);
+  openModal(lead.title, `
+    <div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+        ${badge(lead.status, LEAD_COLORS[lead.status]||'badge-gray')}
+        <span style="font-size:12px;color:var(--muted)">Score: ${lead.score||0}</span>
+        ${lead.source ? badge(lead.source,'badge-blue') : ''}
+      </div>
+      <p style="font-size:12px;color:var(--muted);margin-bottom:8px">${lead.email||''} ${lead.company ? '· '+lead.company : ''}</p>
+      ${sectionHdr('Linked Contact')}
+      ${contact ? relRow(`${contact.first_name} ${contact.last_name||''}`, contact.email||'',
+        `<button class="btn btn-sm btn-ghost" onclick="openContactDetail(${contact.id})">View</button>`) :
+        `<p style="color:var(--muted);font-size:12px">None</p><button class="btn btn-sm btn-ghost" style="margin-top:4px" onclick="linkLeadFK('contact',${id})">+ Link Contact</button>`}
+      ${sectionHdr('Linked Account')}
+      ${account ? relRow(account.name, account.domain||'',
+        `<button class="btn btn-sm btn-ghost" onclick="openAccountDetail(${account.id})">View</button>`) :
+        `<p style="color:var(--muted);font-size:12px">None</p><button class="btn btn-sm btn-ghost" style="margin-top:4px" onclick="linkLeadFK('account',${id})">+ Link Account</button>`}
+      ${sectionHdr('Linked Project')}
+      ${project ? relRow(project.name, badge(project.status,'badge-gray'),
+        `<button class="btn btn-sm btn-ghost" onclick="openProjectDetail(${project.id})">View</button>`) :
+        '<p style="color:var(--muted);font-size:12px">None – convert this lead to create a project.</p>'}
+      ${sectionHdr('Stakeholders ('+stakeholders.length+')')}
+      ${relList(stakeholders.map(s => relRow(s.name, s.role||'',
+        `<button class="btn btn-sm btn-ghost" onclick="openStakeholderDetail(${s.id})">View</button>`)))}
+      <div style="margin-top:16px;display:flex;gap:8px;justify-content:flex-end">
+        <button class="btn btn-ghost" onclick="convertLead(${id})">Convert Lead</button>
+        <button class="btn btn-ghost" onclick="closeModal()">Close</button>
+      </div>
+    </div>`);
+}
+
+async function linkLeadFK(entityType, leadId) {
+  const items = await api('GET', `/${entityType}s?limit=500`).catch(() => []);
+  const opts = items.map(e => {
+    const lbl = e.first_name ? `${e.first_name} ${e.last_name||''} (${e.email||'#'+e.id})` : (e.name||'#'+e.id);
+    return `<option value="${e.id}">${lbl}</option>`;
+  }).join('');
+  openModal(`Link ${entityType} to Lead`, `
+    <form id="crm-form">
+      <div class="form-group"><label>Select ${entityType}</label>
+        <select name="eid">${opts}</select>
+      </div>
+      <div class="form-actions">
+        <button type="button" class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+        <button type="submit" class="btn btn-primary">Link</button>
+      </div>
+    </form>`, async (e) => {
+    const eid = new FormData(e.target).get('eid');
+    await api('PATCH', `/leads/${leadId}/link/${entityType}/${eid}`);
+    toast('Linked'); openLeadDetail(leadId);
+  });
+}
+
+// ── Project detail ────────────────────────────────────────────────────────────
+
+async function openProjectDetail(id) {
+  const [proj, contacts, stakeholders] = await Promise.all([
+    api('GET', `/projects/${id}`),
+    api('GET', `/projects/${id}/contacts`).catch(() => []),
+    api('GET', `/projects/${id}/stakeholders`).catch(() => []),
+  ]);
+  const account = await api('GET', `/projects/${id}/account`).catch(() => null);
+  const lead = await api('GET', `/projects/${id}/lead`).catch(() => null);
+  const cycle = proj.sales_cycle;
+  openModal(proj.name, `
+    <div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+        ${badge(proj.status, proj.status==='active'?'badge-green':proj.status==='closed'?'badge-red':'badge-gray')}
+        ${proj.value ? `<span style="font-size:12px;color:var(--muted)">$${Number(proj.value).toLocaleString()} ${proj.currency||'USD'}</span>` : ''}
+        ${cycle ? badge(cycle.stage, STAGE_COLORS[cycle.stage]||'badge-gray') : ''}
+        ${cycle ? `<span style="font-size:12px;color:var(--muted)">${cycle.probability}%</span>` : ''}
+      </div>
+      ${sectionHdr('Account')}
+      ${account ? relRow(account.name, account.domain||'',
+        `<button class="btn btn-sm btn-ghost" onclick="openAccountDetail(${account.id})">View</button>`) :
+        `<p style="color:var(--muted);font-size:12px">None</p><button class="btn btn-sm btn-ghost" style="margin-top:4px" onclick="linkProjectFK('account',${id})">+ Link Account</button>`}
+      ${sectionHdr('Lead')}
+      ${lead ? relRow(lead.title, badge(lead.status,LEAD_COLORS[lead.status]||'badge-gray'),
+        `<button class="btn btn-sm btn-ghost" onclick="openLeadDetail(${lead.id})">View</button>`) :
+        `<p style="color:var(--muted);font-size:12px">None</p><button class="btn btn-sm btn-ghost" style="margin-top:4px" onclick="linkProjectFK('lead',${id})">+ Link Lead</button>`}
+      ${sectionHdr('Contacts ('+contacts.length+')')}
+      ${relList(contacts.map(c => relRow(`${c.first_name} ${c.last_name||''}`, c.email||'',
+        `<button class="btn btn-sm btn-ghost" onclick="openContactDetail(${c.id})">View</button>
+         <button class="btn btn-sm btn-danger" onclick="unlinkThen('projects',${id},'contact',${c.id},openProjectDetail)">Unlink</button>`)))}
+      <button class="btn btn-sm btn-ghost" style="margin-top:6px" onclick="linkEntityModal('projects',${id},'contact','contacts',openProjectDetail)">+ Link Contact</button>
+      ${sectionHdr('Stakeholders ('+stakeholders.length+')')}
+      ${relList(stakeholders.map(s => relRow(s.name, s.role||s.email||'',
+        `<button class="btn btn-sm btn-ghost" onclick="openStakeholderDetail(${s.id})">View</button>
+         <button class="btn btn-sm btn-danger" onclick="unlinkThen('projects',${id},'stakeholder',${s.id},openProjectDetail)">Unlink</button>`)))}
+      <button class="btn btn-sm btn-ghost" style="margin-top:6px" onclick="linkEntityModal('projects',${id},'stakeholder','stakeholders',openProjectDetail)">+ Link Stakeholder</button>
+      <div style="margin-top:16px;display:flex;gap:8px;justify-content:flex-end">
+        <button class="btn btn-ghost" onclick="identifyStakeholders(${id})">Find Stakeholders</button>
+        <button class="btn btn-ghost" onclick="closeModal()">Close</button>
+      </div>
+    </div>`);
+}
+
+async function linkProjectFK(entityType, projectId) {
+  const items = await api('GET', `/${entityType}s?limit=500`).catch(() => []);
+  const opts = items.map(e => `<option value="${e.id}">${e.title||e.name||'#'+e.id}</option>`).join('');
+  openModal(`Link ${entityType} to Project`, `
+    <form id="crm-form">
+      <div class="form-group"><label>Select ${entityType}</label>
+        <select name="eid">${opts}</select>
+      </div>
+      <div class="form-actions">
+        <button type="button" class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+        <button type="submit" class="btn btn-primary">Link</button>
+      </div>
+    </form>`, async (e) => {
+    const eid = new FormData(e.target).get('eid');
+    await api('PATCH', `/projects/${projectId}/link/${entityType}/${eid}`);
+    toast('Linked'); openProjectDetail(projectId);
+  });
+}
+
+// ── Stakeholder detail ────────────────────────────────────────────────────────
+
+async function openStakeholderDetail(id) {
+  const s = await api('GET', `/stakeholders/${id}`);
+  const projects = await api('GET', `/stakeholders/${id}/projects`).catch(() => []);
+  const account = await api('GET', `/stakeholders/${id}/account`).catch(() => null);
+  const lead = await api('GET', `/stakeholders/${id}/lead`).catch(() => null);
+  const contact = await api('GET', `/stakeholders/${id}/contact`).catch(() => null);
+  let signals = []; try { signals = JSON.parse(s.buying_signals||'[]'); } catch {}
+  const initials = (s.name||'?').split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
+  openModal(s.name, `
+    <div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+        ${badge(s.influence_level||'unknown', s.influence_level==='high'?'badge-red':s.influence_level==='medium'?'badge-yellow':'badge-gray')}
+        ${badge(s.sentiment||'neutral', s.sentiment==='positive'?'badge-green':s.sentiment==='negative'?'badge-red':'badge-gray')}
+        ${s.role ? badge(s.role,'badge-blue') : ''}
+        ${s.ai_enriched_at ? '<span style="font-size:11px;color:var(--accent)">✦ AI enriched</span>' : ''}
+      </div>
+      ${s.ai_summary ? `<div style="background:var(--surface2);border-left:3px solid var(--accent);border-radius:4px;padding:8px 12px;margin-bottom:8px;font-size:12.5px">${s.ai_summary}</div>` : ''}
+      ${signals.length ? `<div style="margin-bottom:8px"><span style="font-size:10px;color:var(--warning);text-transform:uppercase">Buying Signals: </span>${signals.map(sig=>`<span class="skill-tag" style="border-color:var(--warning);color:var(--warning)">${sig}</span>`).join(' ')}</div>` : ''}
+      ${sectionHdr('Account')}
+      ${account ? relRow(account.name, account.domain||'',
+        `<button class="btn btn-sm btn-ghost" onclick="openAccountDetail(${account.id})">View</button>`) :
+        `<p style="color:var(--muted);font-size:12px">None</p><button class="btn btn-sm btn-ghost" style="margin-top:4px" onclick="linkStakeholderFK('account',${id})">+ Link Account</button>`}
+      ${sectionHdr('Lead')}
+      ${lead ? relRow(lead.title, badge(lead.status,LEAD_COLORS[lead.status]||'badge-gray'),
+        `<button class="btn btn-sm btn-ghost" onclick="openLeadDetail(${lead.id})">View</button>`) :
+        `<p style="color:var(--muted);font-size:12px">None</p><button class="btn btn-sm btn-ghost" style="margin-top:4px" onclick="linkStakeholderFK('lead',${id})">+ Link Lead</button>`}
+      ${sectionHdr('Contact')}
+      ${contact ? relRow(`${contact.first_name} ${contact.last_name||''}`, contact.email||'',
+        `<button class="btn btn-sm btn-ghost" onclick="openContactDetail(${contact.id})">View</button>`) :
+        `<p style="color:var(--muted);font-size:12px">None</p><button class="btn btn-sm btn-ghost" style="margin-top:4px" onclick="linkStakeholderFK('contact',${id})">+ Link Contact</button>`}
+      ${sectionHdr('Projects ('+projects.length+')')}
+      ${relList(projects.map(p => relRow(p.name, badge(p.status,'badge-gray'),
+        `<button class="btn btn-sm btn-ghost" onclick="openProjectDetail(${p.id})">View</button>
+         <button class="btn btn-sm btn-danger" onclick="unlinkStakeholderProject(${id},${p.id})">Unlink</button>`)))}
+      <button class="btn btn-sm btn-ghost" style="margin-top:6px" onclick="linkEntityModal('stakeholders',${id},'project','projects',openStakeholderDetail)">+ Link Project</button>
+      <div style="margin-top:16px;display:flex;gap:8px;justify-content:flex-end">
+        ${s.linkedin_url ? `<button class="btn btn-ghost" onclick="closeModal();rescanLinkedIn('stakeholder',${id},'${s.linkedin_url}')">Re-scan LinkedIn</button>` : `<button class="btn btn-ghost" onclick="closeModal();scanLinkedIn('stakeholder',${id})">Add LinkedIn</button>`}
+        <button class="btn btn-ghost" onclick="closeModal()">Close</button>
+      </div>
+    </div>`);
+}
+
+async function unlinkStakeholderProject(stakeholderId, projectId) {
+  try {
+    await api('DELETE', `/stakeholders/${stakeholderId}/unlink/project/${projectId}`);
+    toast('Unlinked'); openStakeholderDetail(stakeholderId);
+  } catch(e) { toast(e.message, false); }
+}
+
+async function linkStakeholderFK(entityType, stakeholderId) {
+  const items = await api('GET', `/${entityType}s?limit=500`).catch(() => []);
+  const opts = items.map(e => {
+    const lbl = e.first_name ? `${e.first_name} ${e.last_name||''} (${e.email||'#'+e.id})` : (e.title||e.name||'#'+e.id);
+    return `<option value="${e.id}">${lbl}</option>`;
+  }).join('');
+  openModal(`Link ${entityType} to Stakeholder`, `
+    <form id="crm-form">
+      <div class="form-group"><label>Select ${entityType}</label>
+        <select name="eid">${opts}</select>
+      </div>
+      <div class="form-actions">
+        <button type="button" class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+        <button type="submit" class="btn btn-primary">Link</button>
+      </div>
+    </form>`, async (e) => {
+    const eid = new FormData(e.target).get('eid');
+    await api('PATCH', `/stakeholders/${stakeholderId}/link/${entityType}/${eid}`);
+    toast('Linked'); openStakeholderDetail(stakeholderId);
   });
 }
 
