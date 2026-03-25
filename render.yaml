@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: sales-crm
+    env: python
+    region: oregon
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: cd sales-crm/backend && python main.py
+    envVars:
+      - key: PORT
+        value: 10000
+      - key: CRM_DB_URL
+        value: sqlite:////data/sales_crm.db
+    # Uncomment the disk block below (and upgrade from free plan) for persistent data.
+    # On the free plan the SQLite file is ephemeral and resets on each deploy.
+    # disk:
+    #   name: crm-data
+    #   mountPath: /data
+    #   sizeGB: 1
